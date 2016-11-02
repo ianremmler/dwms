@@ -24,8 +24,9 @@ const (
 )
 
 var (
-	items  = []int{batteryItem, timeItem}
-	format = func(s []string) string { return strings.Join(s, " | ") }
+	updatePeriod = 10 * time.Second
+	items        = []int{batteryItem, timeItem}
+	format       = func(s []string) string { return strings.Join(s, " | ") }
 
 	batteries      = []string{"BAT0"}
 	batterySymbols = map[string]string{"Charging": "+", "Discharging": "-", "Full": "="}
@@ -93,7 +94,7 @@ func main() {
 	}
 
 	root := xproto.Setup(x).DefaultScreen(x).Root
-	tick := time.Tick(10 * time.Second)
+	tick := time.Tick(updatePeriod)
 	updateStatus(x, root)
 	for range tick {
 		updateStatus(x, root)
