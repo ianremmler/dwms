@@ -19,17 +19,19 @@ const (
 	timeItem
 )
 
+const (
+	batteryPath = "/sys/class/power_supply"
+)
+
 var (
-	format        = func(s string) string { return s }
-	itemSeparator = " | "
-	items         = []int{batteryItem, timeItem}
+	items  = []int{batteryItem, timeItem}
+	format = func(s []string) string { return strings.Join(s, " | ") }
 
-	batteryPath      = "/sys/class/power_supply"
-	batterySymbols   = map[string]string{"Charging": "+", "Discharging": "-", "Full": "="}
-	batterySeparator = "/"
-	batteries        = []string{"BAT0"}
+	batteries      = []string{"BAT0"}
+	batterySymbols = map[string]string{"Charging": "+", "Discharging": "-", "Full": "="}
+	batteryFormat  = func(s []string) string { return strings.Join(s, "/") }
 
-	timeLayout = "2006-01-02 15:04"
+	timeFormat = func(t time.Time) string { return t.Format("2006-01-02 15:04") }
 )
 
 func sysfsIntVal(path string) (int, error) {
@@ -65,7 +67,7 @@ func batteryStatus(bat string) string {
 }
 
 func updateStatus(x *xgb.Conn, root xproto.Window) {
-	var statuses []string
+	var stats []string
 	for _, item := range items {
 		switch item {
 		case batteryItem:
@@ -73,15 +75,15 @@ func updateStatus(x *xgb.Conn, root xproto.Window) {
 			for _, bat := range batteries {
 				batStats = append(batStats, batteryStatus(bat))
 			}
-			statuses = append(statuses, strings.Join(batStats, batterySeparator))
+			stats = append(stats, batteryFormat(batStats))
 		case timeItem:
-			statuses = append(statuses, time.Now().Format(timeLayout))
+			stats = append(stats, timeFormat(time.Now()))
 		}
 	}
-	status := format(strings.Join(statuses, itemSeparator))
+	status := format(stats)
 
 	xproto.ChangeProperty(x, xproto.PropModeReplace, root, xproto.AtomWmName,
-		xproto.AtomString, byte(8), uint32(len(status)), []byte(status))
+		xproto.AtomString, 8, uint32(len(status)), []byte(status))
 }
 
 func main() {
