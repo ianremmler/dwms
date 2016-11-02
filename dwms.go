@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -23,10 +24,10 @@ var (
 	itemSeparator = " | "
 	items         = []int{batteryItem, timeItem}
 
-	batteryPath      = "/sys/class/power_supply/BAT%d/"
+	batteryPath      = "/sys/class/power_supply"
 	batterySymbols   = map[string]string{"Charging": "+", "Discharging": "-", "Full": "="}
 	batterySeparator = "/"
-	batteries        = []int{0}
+	batteries        = []string{"BAT0"}
 
 	timeLayout = "2006-01-02 15:04"
 )
@@ -51,12 +52,12 @@ func sysfsStringVal(path string) (string, error) {
 	return string(bytes.TrimSpace(data)), nil
 }
 
-func batteryStatus(bat int) string {
-	pct, err := sysfsIntVal(fmt.Sprintf(batteryPath+"capacity", bat))
+func batteryStatus(bat string) string {
+	pct, err := sysfsIntVal(filepath.Join(batteryPath, bat, "capacity"))
 	if err != nil {
 		return "?"
 	}
-	status, err := sysfsStringVal(fmt.Sprintf(batteryPath+"status", bat))
+	status, err := sysfsStringVal(filepath.Join(batteryPath, bat, "status"))
 	if err != nil {
 		return "?"
 	}
