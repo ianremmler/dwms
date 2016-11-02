@@ -19,6 +19,7 @@ const (
 )
 
 var (
+	format        = func(s string) string { return s }
 	itemSeparator = " | "
 	items         = []int{batteryItem, timeItem}
 
@@ -76,7 +77,7 @@ func updateStatus(x *xgb.Conn, root xproto.Window) {
 			statuses = append(statuses, time.Now().Format(timeLayout))
 		}
 	}
-	status := strings.Join(statuses, itemSeparator)
+	status := format(strings.Join(statuses, itemSeparator))
 
 	xproto.ChangeProperty(x, xproto.PropModeReplace, root, xproto.AtomWmName,
 		xproto.AtomString, byte(8), uint32(len(status)), []byte(status))
