@@ -26,11 +26,14 @@ const (
 var (
 	updatePeriod = 10 * time.Second
 	items        = []int{batteryItem, timeItem}
-	format       = func(s []string) string { return strings.Join(s, " | ") }
+	format       = func(s []string) string { return strings.Join(s, " | ") + " " }
 
-	batteries      = []string{"BAT0"}
-	batterySymbols = map[string]string{"Charging": "+", "Discharging": "-", "Full": "="}
-	batteryFormat  = func(s []string) string { return strings.Join(s, "/") }
+	batteries         = []string{"BAT0"}
+	batterySymbols    = map[string]string{"Charging": "+", "Discharging": "-", "Full": "="}
+	batteryListFormat = func(s []string) string { return strings.Join(s, "/") }
+	batteryFormat     = func(pct int, status string) string {
+		return fmt.Sprintf("%d%s", pct, batterySymbols[status])
+	}
 
 	timeFormat = func(t time.Time) string { return t.Format("2006-01-02 15:04") }
 )
@@ -64,7 +67,7 @@ func batteryStatus(bat string) string {
 	if err != nil {
 		return "?"
 	}
-	return fmt.Sprintf("%d%s", pct, batterySymbols[status])
+	return batteryFormat(pct, status)
 }
 
 func updateStatus(x *xgb.Conn, root xproto.Window) {
@@ -76,7 +79,7 @@ func updateStatus(x *xgb.Conn, root xproto.Window) {
 			for _, bat := range batteries {
 				batStats = append(batStats, batteryStatus(bat))
 			}
-			stats = append(stats, batteryFormat(batStats))
+			stats = append(stats, batteryListFormat(batStats))
 		case timeItem:
 			stats = append(stats, timeFormat(time.Now()))
 		}
