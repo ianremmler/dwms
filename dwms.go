@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -79,6 +80,7 @@ var (
 	batteryFormat    = batteryFmt
 
 	audioFormat = audioFmt
+	amixerRE    = regexp.MustCompile(`(?m)\[(\d+)%] \[(\w+)]`)
 
 	timeFormat = timeFmt
 )
@@ -196,15 +198,19 @@ func batteryFmt(bats []string) string {
 }
 
 func audioStatus() string {
-	volStr, err := exec.Command("ponymix", "get-volume").Output()
+	out, err := exec.Command("amixer", "get", "Master").Output()
 	if err != nil {
 		return icons[unknownIcon]
 	}
-	vol, err := strconv.Atoi(string(bytes.TrimSpace(volStr)))
+	match := amixerRE.FindSubmatch(out)
+	if len(match) < 3 {
+		return icons[unknownIcon]
+	}
+	vol, err := strconv.Atoi(string(match[1]))
 	if err != nil {
 		return icons[unknownIcon]
 	}
-	isMuted := (exec.Command("ponymix", "is-muted").Run() == nil)
+	isMuted := (string(match[2]) == "off")
 	return audioFormat(vol, isMuted)
 }
 
