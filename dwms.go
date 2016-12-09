@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io/ioutil"
@@ -71,6 +70,9 @@ var (
 	wifiFormat    = wifiFmt
 	wiredFormat   = wiredFmt
 	netFormat     = netFmt
+	ssidRE        = regexp.MustCompile(`SSID:\s+(.*)`)
+	bitrateRE     = regexp.MustCompile(`tx bitrate:\s+(\d+)`)
+	signalRE      = regexp.MustCompile(`signal:\s+(-\d+)`)
 
 	batteries    = []string{"BAT0"}
 	batteryIcons = map[string]iconID{
@@ -80,7 +82,7 @@ var (
 	batteryFormat    = batteryFmt
 
 	audioFormat = audioFmt
-	amixerRE    = regexp.MustCompile(`\[(\d+)%] \[(\w+)]`)
+	amixerRE    = regexp.MustCompile(`\[(\d+)%]\s*\[(\w+)]`)
 
 	timeFormat = timeFmt
 )
@@ -88,38 +90,23 @@ var (
 func wifiStatus(dev string, isUp bool) (string, bool) {
 	ssid, bitrate, signal := "", 0, 0
 
-	cmd := exec.Command("iw", "dev", dev, "link")
-	out, err := cmd.StdoutPipe()
+	out, err := exec.Command("iw", "dev", dev, "link").Output()
 	if err != nil {
 		return "", false
 	}
-	scan := bufio.NewScanner(out)
-	if cmd.Start() != nil {
-		return "", false
+	if match := ssidRE.FindSubmatch(out); len(match) >= 2 {
+		ssid = string(match[1])
 	}
-	for scan.Scan() {
-		key, value := "", ""
-		kv := strings.SplitN(scan.Text(), ": ", 2)
-		if len(kv) == 2 {
-			key, value = strings.TrimSpace(kv[0]), kv[1]
-		}
-		switch key {
-		case "SSID":
-			ssid = value
-		case "tx bitrate":
-			value = strings.SplitN(value+" ", " ", 2)[0]
-			if br, err := strconv.ParseFloat(value, 64); err == nil {
-				bitrate = int(br)
-			}
-		case "signal":
-			value = strings.SplitN(value+" ", " ", 2)[0]
-			if sig, err := strconv.Atoi(value); err == nil {
-				signal = sig
-			}
+	if match := bitrateRE.FindSubmatch(out); len(match) >= 2 {
+		if br, err := strconv.Atoi(string(match[1])); err == nil {
+			bitrate = br
 		}
 	}
-	cmd.Wait()
-
+	if match := signalRE.FindSubmatch(out); len(match) >= 2 {
+		if sig, err := strconv.Atoi(string(match[1])); err == nil {
+			signal = sig
+		}
+	}
 	return wifiFormat(dev, ssid, bitrate, signal, isUp)
 }
 
