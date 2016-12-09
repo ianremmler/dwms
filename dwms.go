@@ -80,7 +80,7 @@ var (
 	batteryFormat    = batteryFmt
 
 	audioFormat = audioFmt
-	amixerRE    = regexp.MustCompile(`(?m)\[(\d+)%] \[(\w+)]`)
+	amixerRE    = regexp.MustCompile(`\[(\d+)%] \[(\w+)]`)
 
 	timeFormat = timeFmt
 )
