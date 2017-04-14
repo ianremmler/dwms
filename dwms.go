@@ -148,6 +148,7 @@ func netStatus() string {
 func wifiFmt(dev, ssid string, bitrate, signal int, isUp bool) (string, bool) {
 	return fmt.Sprintf("%s%s/%d/%d", icons[wifiIcon], ssid, bitrate, signal), isUp
 }
+
 func wiredFmt(dev string, speed int, isUp bool) (string, bool) {
 	return fmt.Sprintf("%s%d", icons[wiredIcon], speed), isUp
 }
