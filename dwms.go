@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -36,7 +37,6 @@ type iconID int
 const (
 	noIcon iconID = iota
 	volumeIcon
-	muteIcon
 	timeIcon
 	wifiIcon
 	wiredIcon
@@ -50,7 +50,6 @@ const (
 var icons = map[iconID]string{
 	noIcon:        "",
 	volumeIcon:    "v:",
-	muteIcon:      "m:",
 	timeIcon:      "",
 	wiredIcon:     "e:",
 	wifiIcon:      "w:",
@@ -203,11 +202,10 @@ func audioStatus() string {
 }
 
 func audioFmt(vol int, isMuted bool) string {
-	icon := volumeIcon
 	if isMuted {
-		icon = muteIcon
+		return fmt.Sprintf("%s_", icons[volumeIcon])
 	}
-	return fmt.Sprintf("%s%d", icons[icon], vol)
+	return fmt.Sprintf("%s%d", icons[volumeIcon], vol)
 }
 
 func timeStatus() string {
@@ -267,9 +265,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, os.Kill)
 	root := xproto.Setup(x).DefaultScreen(x).Root
-	for t := time.Tick(updatePeriod); ; <-t {
-		updateStatus(x, root)
+	t := time.Tick(updatePeriod)
+	for {
+		select {
+		case <-sig:
+			xproto.ChangeProperty(x, xproto.PropModeReplace, root, xproto.AtomWmName,
+				xproto.AtomString, 8, 0, nil)
+			x.Close()
+			os.Exit(0)
+		case <-t:
+			updateStatus(x, root)
+		}
 	}
 }
