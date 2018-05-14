@@ -220,7 +220,7 @@ func statusFmt(s []string) string {
 	return " " + strings.Join(s, " | ") + " "
 }
 
-func updateStatus(x *xgb.Conn, root xproto.Window) {
+func status() string {
 	var stats []string
 	for _, item := range items {
 		switch item {
@@ -234,10 +234,12 @@ func updateStatus(x *xgb.Conn, root xproto.Window) {
 			stats = append(stats, timeStatus())
 		}
 	}
-	status := statusFormat(stats)
+	return statusFormat(stats)
+}
 
+func setWmName(x *xgb.Conn, root xproto.Window, str string) {
 	xproto.ChangeProperty(x, xproto.PropModeReplace, root, xproto.AtomWmName,
-		xproto.AtomString, 8, uint32(len(status)), []byte(status))
+		xproto.AtomString, 8, uint32(len(str)), []byte(str))
 }
 
 func sysfsIntVal(path string) (int, error) {
@@ -265,19 +267,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer x.Close()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, os.Kill)
 	root := xproto.Setup(x).DefaultScreen(x).Root
 	t := time.Tick(updatePeriod)
+loop:
 	for {
 		select {
 		case <-sig:
-			xproto.ChangeProperty(x, xproto.PropModeReplace, root, xproto.AtomWmName,
-				xproto.AtomString, 8, 0, nil)
-			x.Close()
-			os.Exit(0)
+			break loop
 		case <-t:
-			updateStatus(x, root)
+			setWmName(x, root, status())
 		}
 	}
+	setWmName(x, root, "") // cleanup
 }
