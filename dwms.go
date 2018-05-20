@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/BurntSushi/xgb"
@@ -269,7 +270,7 @@ func main() {
 	}
 	defer x.Close()
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, os.Kill)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	root := xproto.Setup(x).DefaultScreen(x).Root
 	t := time.Tick(updatePeriod)
 loop:
