@@ -8,7 +8,6 @@ import (
 func init() {
 	// reassign package vars here to customize
 
-	// FontAwesome icons
 	icons[wifiIcon] = "ω"
 	icons[wiredIcon] = "ε"
 	icons[volumeIcon] = "α"

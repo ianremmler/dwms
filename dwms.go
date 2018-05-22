@@ -120,10 +120,7 @@ func wiredStatus(dev string, isUp bool) (string, bool) {
 
 func netDevStatus(dev string) (string, bool) {
 	status, err := sysfsStringVal(filepath.Join(netSysPath, dev, "operstate"))
-	isUp := true
-	if err != nil || status != "up" {
-		isUp = false
-	}
+	isUp := err == nil && status == "up"
 
 	_, err = os.Stat(filepath.Join(netSysPath, dev, "wireless"))
 	isWifi := !os.IsNotExist(err)
