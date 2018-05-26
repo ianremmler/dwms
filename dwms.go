@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -11,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -19,80 +17,25 @@ import (
 	"github.com/BurntSushi/xgb/xproto"
 )
 
-type itemID int
-
-const (
-	batteryItem itemID = iota
-	timeItem
-	audioItem
-	netItem
-)
-
 const (
 	batSysPath = "/sys/class/power_supply"
 	netSysPath = "/sys/class/net"
 )
 
-type iconID int
-
-const (
-	noIcon iconID = iota
-	volumeIcon
-	timeIcon
-	wifiIcon
-	wiredIcon
-	batteryIcon
-	chargeIcon
-	dischargeIcon
-	fullIcon
-	unknownIcon
-)
-
-var icons = map[iconID]string{
-	noIcon:        "",
-	volumeIcon:    "v:",
-	timeIcon:      "",
-	wiredIcon:     "e:",
-	wifiIcon:      "w:",
-	batteryIcon:   "b:",
-	chargeIcon:    "+",
-	dischargeIcon: "-",
-	fullIcon:      "=",
-	unknownIcon:   "?",
-}
-
 var (
-	updatePeriod = 5 * time.Second
-	items        = []itemID{netItem, batteryItem, audioItem, timeItem}
-	statusFormat = statusFmt
-
-	netInterfaces = []string{"wlan0", "eth0"}
-	wifiFormat    = wifiFmt
-	wiredFormat   = wiredFmt
-	netFormat     = netFmt
-	ssidRE        = regexp.MustCompile(`SSID:\s+(.*)`)
-	bitrateRE     = regexp.MustCompile(`tx bitrate:\s+(\d+)`)
-	signalRE      = regexp.MustCompile(`signal:\s+(-\d+)`)
-
-	batteries    = []string{"BAT0"}
-	batteryIcons = map[string]iconID{
-		"Charging": chargeIcon, "Discharging": dischargeIcon, "Full": fullIcon,
-	}
-	batteryDevFormat = batteryDevFmt
-	batteryFormat    = batteryFmt
-
-	audioFormat = audioFmt
-	amixerRE    = regexp.MustCompile(`\[(\d+)%]\s*\[(\w+)]`)
-
-	timeFormat = timeFmt
+	ssidRE    = regexp.MustCompile(`SSID:\s+(.*)`)
+	bitrateRE = regexp.MustCompile(`tx bitrate:\s+(\d+)`)
+	signalRE  = regexp.MustCompile(`signal:\s+(-\d+)`)
+	amixerRE  = regexp.MustCompile(`\[(\d+)%]\s*\[(\w+)]`)
+	xconn     *xgb.Conn
+	xroot     xproto.Window
 )
 
-func wifiStatus(dev string, isUp bool) (string, bool) {
+func wifiStatus(dev string) (string, int, int) {
 	ssid, bitrate, signal := "", 0, 0
-
 	out, err := exec.Command("iw", "dev", dev, "link").Output()
 	if err != nil {
-		return "", false
+		return ssid, bitrate, signal
 	}
 	if match := ssidRE.FindSubmatch(out); len(match) >= 2 {
 		ssid = string(match[1])
@@ -107,18 +50,18 @@ func wifiStatus(dev string, isUp bool) (string, bool) {
 			signal = sig
 		}
 	}
-	return wifiFormat(dev, ssid, bitrate, signal, isUp)
+	return ssid, bitrate, signal
 }
 
-func wiredStatus(dev string, isUp bool) (string, bool) {
-	speed := 0
-	if spd, err := sysfsIntVal(filepath.Join(netSysPath, dev, "speed")); err == nil {
-		speed = spd
+func wiredStatus(dev string) int {
+	speed, err := sysfsIntVal(filepath.Join(netSysPath, dev, "speed"))
+	if err != nil {
+		return 0
 	}
-	return wiredFormat(dev, speed, isUp)
+	return speed
 }
 
-func netDevStatus(dev string) (string, bool) {
+func netDevStatus(dev string) string {
 	status, err := sysfsStringVal(filepath.Join(netSysPath, dev, "operstate"))
 	isUp := err == nil && status == "up"
 
@@ -126,44 +69,31 @@ func netDevStatus(dev string) (string, bool) {
 	isWifi := !os.IsNotExist(err)
 
 	if isWifi {
-		return wifiStatus(dev, isUp)
+		ssid, bitrate, signal := wifiStatus(dev)
+		return wifiFmt(dev, ssid, bitrate, signal, isUp)
 	}
-	return wiredStatus(dev, isUp)
+	speed := wiredStatus(dev)
+	return wiredFmt(dev, speed, isUp)
 }
 
 func netStatus() string {
 	var netStats []string
 	for _, dev := range netInterfaces {
-		devStat, ok := netDevStatus(dev)
-		if ok {
-			netStats = append(netStats, devStat)
-		}
+		netStats = append(netStats, netDevStatus(dev))
 	}
-	return netFormat(netStats)
-}
-
-func wifiFmt(dev, ssid string, bitrate, signal int, isUp bool) (string, bool) {
-	return fmt.Sprintf("%s%s/%d/%d", icons[wifiIcon], ssid, bitrate, signal), isUp
-}
-
-func wiredFmt(dev string, speed int, isUp bool) (string, bool) {
-	return fmt.Sprintf("%s%d", icons[wiredIcon], speed), isUp
-}
-
-func netFmt(devs []string) string {
-	return strings.Join(devs, " ")
+	return netFmt(netStats)
 }
 
 func batteryDevStatus(bat string) string {
 	pct, err := sysfsIntVal(filepath.Join(batSysPath, bat, "capacity"))
 	if err != nil {
-		return icons[unknownIcon]
+		return unknown
 	}
 	status, err := sysfsStringVal(filepath.Join(batSysPath, bat, "status"))
 	if err != nil {
-		return icons[unknownIcon]
+		return unknown
 	}
-	return batteryDevFormat(pct, status)
+	return batteryDevFmt(pct, status)
 }
 
 func batteryStatus() string {
@@ -171,73 +101,41 @@ func batteryStatus() string {
 	for _, bat := range batteries {
 		batStats = append(batStats, batteryDevStatus(bat))
 	}
-	return batteryFormat(batStats)
-}
-
-func batteryDevFmt(pct int, status string) string {
-	return fmt.Sprintf("%d%s", pct, icons[batteryIcons[status]])
-}
-
-func batteryFmt(bats []string) string {
-	return icons[batteryIcon] + strings.Join(bats, "/")
+	return batteryFmt(batStats)
 }
 
 func audioStatus() string {
 	out, err := exec.Command("amixer", "get", "Master").Output()
 	if err != nil {
-		return icons[unknownIcon]
+		return unknown
 	}
 	match := amixerRE.FindSubmatch(out)
 	if len(match) < 3 {
-		return icons[unknownIcon]
+		return unknown
 	}
 	vol, err := strconv.Atoi(string(match[1]))
 	if err != nil {
-		return icons[unknownIcon]
+		return unknown
 	}
 	isMuted := (string(match[2]) == "off")
-	return audioFormat(vol, isMuted)
-}
-
-func audioFmt(vol int, isMuted bool) string {
-	if isMuted {
-		return fmt.Sprintf("%s_", icons[volumeIcon])
-	}
-	return fmt.Sprintf("%s%d", icons[volumeIcon], vol)
+	return audioFmt(vol, isMuted)
 }
 
 func timeStatus() string {
-	return timeFormat(time.Now())
-}
-
-func timeFmt(t time.Time) string {
-	return t.Format("2006-01-02 15:04")
-}
-
-func statusFmt(s []string) string {
-	return " " + strings.Join(s, " | ") + " "
+	return timeFmt(time.Now())
 }
 
 func status() string {
 	var stats []string
 	for _, item := range items {
-		switch item {
-		case batteryItem:
-			stats = append(stats, batteryStatus())
-		case audioItem:
-			stats = append(stats, audioStatus())
-		case netItem:
-			stats = append(stats, netStatus())
-		case timeItem:
-			stats = append(stats, timeStatus())
-		}
+		stats = append(stats, item())
 	}
-	return statusFormat(stats)
+	return statusFmt(stats)
 }
 
-func setWmName(x *xgb.Conn, root xproto.Window, str string) {
-	xproto.ChangeProperty(x, xproto.PropModeReplace, root, xproto.AtomWmName,
-		xproto.AtomString, 8, uint32(len(str)), []byte(str))
+func setStatus(statusText string) {
+	xproto.ChangeProperty(xconn, xproto.PropModeReplace, xroot, xproto.AtomWmName,
+		xproto.AtomString, 8, uint32(len(statusText)), []byte(statusText))
 }
 
 func sysfsIntVal(path string) (int, error) {
@@ -261,23 +159,31 @@ func sysfsStringVal(path string) (string, error) {
 }
 
 func main() {
-	x, err := xgb.NewConn()
+	var err error
+	xconn, err = xgb.NewConn()
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer x.Close()
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	root := xproto.Setup(x).DefaultScreen(x).Root
+	defer xconn.Close()
+	xroot = xproto.Setup(xconn).DefaultScreen(xconn).Root
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 	t := time.Tick(updatePeriod)
+
+	setStatus(status())
 loop:
 	for {
 		select {
-		case <-sig:
-			break loop
+		case sig := <-sigs:
+			switch sig {
+			case syscall.SIGUSR1:
+				setStatus(status())
+			default:
+				break loop
+			}
 		case <-t:
-			setWmName(x, root, status())
+			setStatus(status())
 		}
 	}
-	setWmName(x, root, "") // cleanup
+	setStatus("") // cleanup
 }

@@ -1,26 +1,68 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
 
-func init() {
-	// reassign package vars here to customize
+const (
+	unknown      = "?"
+	updatePeriod = 5 * time.Second
+)
 
-	icons[wifiIcon] = "ω"
-	icons[wiredIcon] = "ε"
-	icons[volumeIcon] = "α"
-	icons[batteryIcon] = "β"
-	icons[timeIcon] = "τ"
-
-	updatePeriod = 1 * time.Second
-	batteries = []string{"BAT0", "BAT1"}
+var (
+	chargeStatus  = map[string]string{"Charging": "+", "Discharging": "-", "Full": "="}
+	items         = []func() string{netStatus, batteryStatus, audioStatus, timeStatus}
+	batteries     = []string{"BAT0", "BAT1"}
 	netInterfaces = []string{"wlp3s0", "enp0s25"}
-	timeFormat = func(t time.Time) string {
-		return icons[timeIcon] + t.Format("01/02-15:04")
+)
+
+func wifiFmt(dev, ssid string, bitrate, signal int, isUp bool) string {
+	if !isUp {
+		return ""
 	}
-	statusFormat = func(s []string) string {
-		return " " + strings.Join(s, " ") + " "
+	return fmt.Sprintf("ω%s/%d/%d", ssid, bitrate, signal)
+}
+
+func wiredFmt(dev string, speed int, isUp bool) string {
+	if !isUp {
+		return ""
 	}
+	return fmt.Sprintf("ε%d", speed)
+}
+
+func netFmt(devs []string) string {
+	upDevs := devs[:0]
+	for _, dev := range devs {
+		if len(dev) > 0 {
+			upDevs = append(upDevs, dev)
+		}
+	}
+	return strings.Join(upDevs, " ")
+}
+
+func batteryDevFmt(pct int, status string) string {
+	return fmt.Sprintf("%d%s", pct, chargeStatus[status])
+}
+
+func batteryFmt(bats []string) string {
+	return "β" + strings.Join(bats, "/")
+}
+
+func audioFmt(vol int, isMuted bool) string {
+	sym := "ν"
+	if isMuted {
+		sym = "μ"
+	}
+	return sym + fmt.Sprintf("%d", vol)
+}
+
+func timeFmt(t time.Time) string {
+	// return "τ" + t.Format("01/02-15:04")
+	return t.Format("τ01/02-15:04")
+}
+
+func statusFmt(s []string) string {
+	return " " + strings.Join(s, " ") + " "
 }
