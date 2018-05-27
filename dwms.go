@@ -168,7 +168,7 @@ func main() {
 	xroot = xproto.Setup(xconn).DefaultScreen(xconn).Root
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
-	t := time.Tick(updatePeriod)
+	update := time.Tick(updatePeriod)
 
 	setStatus(status())
 loop:
@@ -181,7 +181,7 @@ loop:
 			default:
 				break loop
 			}
-		case <-t:
+		case <-update:
 			setStatus(status())
 		}
 	}

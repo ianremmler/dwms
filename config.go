@@ -59,10 +59,15 @@ func audioFmt(vol int, isMuted bool) string {
 }
 
 func timeFmt(t time.Time) string {
-	// return "τ" + t.Format("01/02-15:04")
 	return t.Format("τ01/02-15:04")
 }
 
-func statusFmt(s []string) string {
-	return " " + strings.Join(s, " ") + " "
+func statusFmt(stats []string) string {
+	okStats := stats[:0]
+	for _, stat := range stats {
+		if len(stat) > 0 {
+			okStats = append(okStats, stat)
+		}
+	}
+	return " " + strings.Join(okStats, " ") + " "
 }
