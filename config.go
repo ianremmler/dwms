@@ -12,7 +12,7 @@ const (
 )
 
 var (
-	chargeStatus  = map[string]string{"Charging": "+", "Discharging": "-", "Full": "="}
+	chargeStatus  = map[string]string{"Charging": "+", "Discharging": "-"}
 	items         = []func() string{netStatus, batteryStatus, audioStatus, timeStatus}
 	batteries     = []string{"BAT0", "BAT1"}
 	netInterfaces = []string{"wlp3s0", "enp0s25"}
