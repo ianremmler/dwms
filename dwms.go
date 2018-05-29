@@ -158,6 +158,27 @@ func sysfsStringVal(path string) (string, error) {
 	return string(bytes.TrimSpace(data)), nil
 }
 
+func run() {
+	setStatus(status())
+	defer setStatus("") // cleanup
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	update := time.Tick(updatePeriod)
+	for {
+		select {
+		case sig := <-sigs:
+			switch sig {
+			case syscall.SIGUSR1:
+				setStatus(status())
+			default:
+				return
+			}
+		case <-update:
+			setStatus(status())
+		}
+	}
+}
+
 func main() {
 	var err error
 	xconn, err = xgb.NewConn()
@@ -166,24 +187,5 @@ func main() {
 	}
 	defer xconn.Close()
 	xroot = xproto.Setup(xconn).DefaultScreen(xconn).Root
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
-	update := time.Tick(updatePeriod)
-
-	setStatus(status())
-loop:
-	for {
-		select {
-		case sig := <-sigs:
-			switch sig {
-			case syscall.SIGUSR1:
-				setStatus(status())
-			default:
-				break loop
-			}
-		case <-update:
-			setStatus(status())
-		}
-	}
-	setStatus("") // cleanup
+	run()
 }
