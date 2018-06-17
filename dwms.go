@@ -1,7 +1,11 @@
+// dwms is a dwm status generator.
+//
+// Assign custom values to exported identifiers in config.go to configure.
 package main
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -10,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,9 +22,11 @@ import (
 	"github.com/BurntSushi/xgb/xproto"
 )
 
+type statusFunc func() string
+
 const (
-	batSysPath = "/sys/class/power_supply"
-	netSysPath = "/sys/class/net"
+	battSysPath = "/sys/class/power_supply"
+	netSysPath  = "/sys/class/net"
 )
 
 var (
@@ -30,6 +37,44 @@ var (
 	xconn     *xgb.Conn
 	xroot     xproto.Window
 )
+
+var WifiFmt = func(dev, ssid string, bitrate, signal int, up bool) string {
+	if !up {
+		return ""
+	}
+	return fmt.Sprintf("ω%s/%d/%d", ssid, bitrate, signal)
+}
+
+var WiredFmt = func(dev string, speed int, up bool) string {
+	if !up {
+		return ""
+	}
+	return "ε" + strconv.Itoa(speed)
+}
+
+var NetFmt = func(devs []string) string {
+	return strings.Join(filterEmpty(devs), " ")
+}
+
+var BatteryDevFmt = func(pct int, state string) string {
+	return strconv.Itoa(pct) + map[string]string{"Charging": "+", "Discharging": "-"}[state]
+}
+
+var BatteryFmt = func(bats []string) string {
+	return "β" + strings.Join(bats, "/")
+}
+
+var AudioFmt = func(vol int, muted bool) string {
+	return map[bool]string{false: "ν", true: "μ"}[muted] + strconv.Itoa(vol)
+}
+
+var TimeFmt = func(t time.Time) string {
+	return t.Format("τ01/02-15:04")
+}
+
+var StatusFmt = func(stats []string) string {
+	return " " + strings.Join(filterEmpty(stats), " ") + " "
+}
 
 func wifiStatus(dev string) (string, int, int) {
 	ssid, bitrate, signal := "", 0, 0
@@ -63,74 +108,77 @@ func wiredStatus(dev string) int {
 
 func netDevStatus(dev string) string {
 	status, err := sysfsStringVal(filepath.Join(netSysPath, dev, "operstate"))
-	isUp := err == nil && status == "up"
-
-	_, err = os.Stat(filepath.Join(netSysPath, dev, "wireless"))
-	isWifi := !os.IsNotExist(err)
-
-	if isWifi {
+	up := err == nil && status == "up"
+	if _, err = os.Stat(filepath.Join(netSysPath, dev, "wireless")); err == nil {
 		ssid, bitrate, signal := wifiStatus(dev)
-		return wifiFmt(dev, ssid, bitrate, signal, isUp)
+		return WifiFmt(dev, ssid, bitrate, signal, up)
 	}
 	speed := wiredStatus(dev)
-	return wiredFmt(dev, speed, isUp)
+	return WiredFmt(dev, speed, up)
 }
 
-func netStatus() string {
-	var netStats []string
-	for _, dev := range netInterfaces {
-		netStats = append(netStats, netDevStatus(dev))
+func netStatus(devs ...string) statusFunc {
+	return func() string {
+		var netStats []string
+		for _, dev := range devs {
+			netStats = append(netStats, netDevStatus(dev))
+		}
+		return NetFmt(netStats)
 	}
-	return netFmt(netStats)
 }
 
-func batteryDevStatus(bat string) string {
-	pct, err := sysfsIntVal(filepath.Join(batSysPath, bat, "capacity"))
+func batteryDevStatus(batt string) string {
+	pct, err := sysfsIntVal(filepath.Join(battSysPath, batt, "capacity"))
 	if err != nil {
-		return unknown
+		return Unknown
 	}
-	status, err := sysfsStringVal(filepath.Join(batSysPath, bat, "status"))
+	status, err := sysfsStringVal(filepath.Join(battSysPath, batt, "status"))
 	if err != nil {
-		return unknown
+		return Unknown
 	}
-	return batteryDevFmt(pct, status)
+	return BatteryDevFmt(pct, status)
 }
 
-func batteryStatus() string {
-	var batStats []string
-	for _, bat := range batteries {
-		batStats = append(batStats, batteryDevStatus(bat))
+func batteryStatus(batts ...string) statusFunc {
+	return func() string {
+		var battStats []string
+		for _, batt := range batts {
+			battStats = append(battStats, batteryDevStatus(batt))
+		}
+		return BatteryFmt(battStats)
 	}
-	return batteryFmt(batStats)
 }
 
-func audioStatus() string {
-	out, err := exec.Command("amixer", "get", "Master").Output()
-	if err != nil {
-		return unknown
+func audioStatus(args ...string) statusFunc {
+	args = append(args, []string{"get", "Master"}...)
+	return func() string {
+		out, err := exec.Command("amixer", args...).Output()
+		if err != nil {
+			return Unknown
+		}
+		match := amixerRE.FindSubmatch(out)
+		if len(match) < 3 {
+			return Unknown
+		}
+		vol, err := strconv.Atoi(string(match[1]))
+		if err != nil {
+			return Unknown
+		}
+		muted := (string(match[2]) == "off")
+		return AudioFmt(vol, muted)
 	}
-	match := amixerRE.FindSubmatch(out)
-	if len(match) < 3 {
-		return unknown
-	}
-	vol, err := strconv.Atoi(string(match[1]))
-	if err != nil {
-		return unknown
-	}
-	isMuted := (string(match[2]) == "off")
-	return audioFmt(vol, isMuted)
 }
 
 func timeStatus() string {
-	return timeFmt(time.Now())
+	return TimeFmt(time.Now())
 }
 
 func status() string {
 	var stats []string
-	for _, item := range items {
+	for _, item := range Items {
 		stats = append(stats, item())
 	}
-	return statusFmt(stats)
+	return StatusFmt(stats)
 }
 
 func setStatus(statusText string) {
@@ -158,12 +206,22 @@ func sysfsStringVal(path string) (string, error) {
 	return string(bytes.TrimSpace(data)), nil
 }
 
+func filterEmpty(strings []string) []string {
+	filtStrings := strings[:0]
+	for _, str := range strings {
+		if str != "" {
+			filtStrings = append(filtStrings, str)
+		}
+	}
+	return filtStrings
+}
+
 func run() {
 	setStatus(status())
 	defer setStatus("") // cleanup
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
-	update := time.Tick(updatePeriod)
+	update := time.Tick(UpdatePeriod)
 	for {
 		select {
 		case sig := <-sigs:
