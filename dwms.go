@@ -33,7 +33,7 @@ var (
 	ssidRE    = regexp.MustCompile(`SSID:\s+(.*)`)
 	bitrateRE = regexp.MustCompile(`tx bitrate:\s+(\d+)`)
 	signalRE  = regexp.MustCompile(`signal:\s+(-\d+)`)
-	amixerRE  = regexp.MustCompile(`\[(\d+)%]\s*\[(\w+)]`)
+	amixerRE  = regexp.MustCompile(`\[(\d+)%\].*\[(\w+)\]`)
 	xconn     *xgb.Conn
 	xroot     xproto.Window
 )
